@@ -2,7 +2,7 @@
 
 # Sample for create molecule test instance on VMware
 
-This is a sample to create a test instance of molecule on VMware environment.
+This is a sample to create a test instance of molecule on VMware environment.  
 Samples for Linux and Windows are prepared.
 
 ## How to create molecule test instance on VMware environment
@@ -19,7 +19,7 @@ The reason required a snapshot is because test instances are created with a link
 
 ### Run the sample
 
-The sample this repository provides Linux (linux_ping) and Windows (win_ping) roles.
+The sample this repository provides Linux (linux_ping) and Windows (win_ping) roles.  
 To run the sample, change the variable in the molecule.yml file.
 
 |    os   |               molecule.yml path                |
@@ -147,8 +147,8 @@ The following is demos when the sample is run.
 ### How to use it for testing other roles
 
 Test with other roles is easy.
-Copy each molecule directory to the role to be test.
-It is `roles/linux_ping/molecule/` for Linux and `roles/win_ping/molecule` for Windows.
+Copy each molecule directory to the role to be test.  
+It is `roles/linux_ping/molecule/` for Linux and `roles/win_ping/molecule` for Windows.  
 After copying the directory, change the variable file and run the `molecule test` command.
 
 # License
