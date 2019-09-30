@@ -1,0 +1,56 @@
+---
+- name: Destroy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  no_log: "{{ not (lookup('env', 'MOLECULE_DEBUG') | bool or molecule_yml.provisioner.log | default(false) | bool) }}"
+  tasks:
+    - name: Gather fact from molecule instance(s).
+      vmware_guest_facts:
+        hostname: "{{ molecule_yml.driver.hostname }}"
+        username: "{{ molecule_yml.driver.username }}"
+        password: "{{ molecule_yml.driver.password }}"
+        validate_certs: "{{ molecule_yml.driver.validate_certs }}"
+        datacenter: "{{ molecule_yml.driver.datacenter }}"
+        folder: "{{ molecule_yml.driver.folder }}"
+        name: "{{ item.name }}"
+      register: server_fact_result
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      ignore_errors: true
+
+    - name: Poweredoff molecule instance(s).
+      vmware_guest:
+        hostname: "{{ molecule_yml.driver.hostname }}"
+        username: "{{ molecule_yml.driver.username }}"
+        password: "{{ molecule_yml.driver.password }}"
+        validate_certs: "{{ molecule_yml.driver.validate_certs }}"
+        datacenter: "{{ molecule_yml.driver.datacenter }}"
+        esxi_hostname: "{{ molecule_yml.driver.esxi_hostname }}"
+        folder: "{{ molecule_yml.driver.folder }}"
+        name: "{{ item.instance.hw_name }}"
+        state: poweredoff
+      loop: "{{ server_fact_result.results }}"
+      loop_control:
+        label: "{{ item.instance.hw_name | default('not find vm') }}"
+      when:
+        - "'instance' in item"
+        - item.instance.hw_power_status != "poweredOff"
+
+    - name: Destroy molecule instance(s).
+      vmware_guest:
+        hostname: "{{ molecule_yml.driver.hostname }}"
+        username: "{{ molecule_yml.driver.username }}"
+        password: "{{ molecule_yml.driver.password }}"
+        validate_certs: "{{ molecule_yml.driver.validate_certs }}"
+        datacenter: "{{ molecule_yml.driver.datacenter }}"
+        esxi_hostname: "{{ molecule_yml.driver.esxi_hostname }}"
+        folder: "{{ molecule_yml.driver.folder }}"
+        name: "{{ item.instance.hw_name }}"
+        state: absent
+      loop: "{{ server_fact_result.results }}"
+      loop_control:
+        label: "{{ item.instance.hw_name | default('not find vm') }}"
+      when:
+        - "'instance' in item"

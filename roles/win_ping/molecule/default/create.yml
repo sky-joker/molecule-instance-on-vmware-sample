@@ -1,0 +1,186 @@
+---
+- name: Create
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  no_log: "{{ not (lookup('env', 'MOLECULE_DEBUG') | bool or molecule_yml.provisioner.log | default(false) | bool) }}"
+  vars:
+    certificate_path: "{{ lookup('env','MOLECULE_EPHEMERAL_DIRECTORY') }}/certificate"
+    powershell_script: "{{ lookup('env','MOLECULE_EPHEMERAL_DIRECTORY') }}/powershell"
+    windows_save_path: C:\Users\Administrator\Desktop
+    powershell_absolute_path: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+  tasks:
+    - name: Create molecule instance(s).
+      vmware_guest:
+        hostname: "{{ molecule_yml.driver.hostname }}"
+        username: "{{ molecule_yml.driver.username }}"
+        password: "{{ molecule_yml.driver.password }}"
+        validate_certs: "{{ molecule_yml.driver.validate_certs | default(false) }}"
+        datacenter: "{{ molecule_yml.driver.datacenter }}"
+        esxi_hostname: "{{ molecule_yml.driver.esxi_hostname }}"
+        folder: "{{ molecule_yml.driver.folder }}"
+        name: "{{ item.name }}"
+        template: "{{ item.template }}"
+        linked_clone: yes
+        snapshot_src: "{{ item.snapshot_src }}"
+        hardware:
+          memory_mb: "{{ item.memory_mb }}"
+          num_cpus: "{{ item.cpus }}"
+        networks:
+          - name: "{{ item.network }}"
+        datastore: "{{ item.datastore }}"
+        customization:
+          hostname: "{{ item.name }}"
+          autlogon: no
+          fullname: molecule
+          orgname: molecule
+          password: "{{ molecule_yml.driver.vm_password }}"
+        wait_for_ip_address: yes
+        wait_for_customization: yes
+        state: poweredon
+      register: server
+      with_items: "{{ molecule_yml.platforms }}"
+
+    - name: Create for powershell script save directory.
+      file:
+        path: "{{ powershell_script }}"
+        state: directory
+
+    - name: Create for certificate save directory.
+      file:
+        path: "{{ certificate_path }}"
+        state: directory
+
+    - name: Generate an OpenSSL private key. 
+      openssl_privatekey:
+        path: "{{ certificate_path }}/server.key"
+        passphrase: "{{ molecule_yml.driver.vm_password }}"
+        cipher: aes256
+        size: 4096
+
+    - name: Generate an OpenSSL certificate signing request.
+      openssl_csr:
+        path: "{{ certificate_path }}/{{ item.name }}.csr"
+        privatekey_passphrase: "{{ molecule_yml.driver.vm_password }}"
+        privatekey_path: "{{ certificate_path }}/server.key"
+        common_name: "{{ item.name }}"
+        key_usage:
+          - digitalSignature
+          - keyEncipherment
+        extended_key_usage:
+          - clientAuth
+          - serverAuth
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Generate a self signed OpenSSL certificate.
+      openssl_certificate:
+        path: "{{ certificate_path }}/{{ item.name }}.crt"
+        privatekey_passphrase: "{{ molecule_yml.driver.vm_password }}"
+        privatekey_path: "{{ certificate_path }}/server.key"
+        csr_path: "{{ certificate_path }}/{{ item.name }}.csr"
+        provider: selfsigned
+        selfsigned_not_after: "+3650d"
+        ownca_not_after: "+3650d"
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Generate PKCS12 file.
+      openssl_pkcs12:
+        friendly_name: "molecule"
+        action: export
+        passphrase: "{{ molecule_yml.driver.vm_password }}"
+        privatekey_passphrase: "{{ molecule_yml.driver.vm_password }}"
+        path: "{{ certificate_path }}/{{ item.name }}.pfx"
+        privatekey_path: "{{ certificate_path }}/server.key"
+        certificate_path: "{{ certificate_path }}/{{ item.name }}.crt"
+        state: present
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Generate script(ps1) to import PKCS12.
+      template:
+        src: templates/import_winrm_certificate.j2
+        dest: "{{ powershell_script }}/{{ item.name }}.ps1"
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Copy pfx file to vm.
+      vmware_guest_file_operation:
+        hostname: "{{ molecule_yml.driver.hostname }}"
+        username: "{{ molecule_yml.driver.username }}"
+        password: "{{ molecule_yml.driver.password }}"
+        validate_certs: "{{ molecule_yml.driver.validate_certs | default(false) }}"
+        datacenter: "{{ molecule_yml.driver.datacenter }}"
+        vm_id: "{{ item.name }}"
+        vm_username: "{{ molecule_yml.driver.vm_username }}"
+        vm_password: "{{ molecule_yml.driver.vm_password }}"
+        copy:
+          src: "{{ certificate_path }}/{{ item.name }}.pfx"
+          dest: "{{ windows_save_path }}\\{{ item.name }}.pfx"
+          overwrite: yes
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Copy powershell script to vm.
+      vmware_guest_file_operation:
+        hostname: "{{ molecule_yml.driver.hostname }}"
+        username: "{{ molecule_yml.driver.username }}"
+        password: "{{ molecule_yml.driver.password }}"
+        validate_certs: "{{ molecule_yml.driver.validate_certs | default(false) }}"
+        datacenter: "{{ molecule_yml.driver.datacenter }}"
+        vm_id: "{{ item.name }}"
+        vm_username: "{{ molecule_yml.driver.vm_username }}"
+        vm_password: "{{ molecule_yml.driver.vm_password }}"
+        copy:
+          src: "{{ powershell_script }}/{{ item.name }}.ps1"
+          dest: "{{ windows_save_path }}\\{{ item.name }}.ps1"
+          overwrite: yes
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Enable WinRM HTTPS.
+      vmware_vm_shell:
+        hostname: "{{ molecule_yml.driver.hostname }}"
+        username: "{{ molecule_yml.driver.username }}"
+        password: "{{ molecule_yml.driver.password }}"
+        validate_certs: "{{ molecule_yml.driver.validate_certs | default(false) }}"
+        datacenter: "{{ molecule_yml.driver.datacenter }}"
+        vm_id: "{{ item.name }}"
+        vm_username: "{{ molecule_yml.driver.vm_username }}"
+        vm_password: "{{ molecule_yml.driver.vm_password }}"
+        vm_shell: "{{ powershell_absolute_path }}"
+        vm_shell_args: "-File {{ windows_save_path }}\\{{ item.name }}.ps1"
+      loop: "{{ molecule_yml.platforms }}"
+
+    - name: Populate instance config dict.
+      set_fact:
+        instance_conf_dict: {
+          'instance': "{{ item.item.name }}",
+          'address': "{{ item.instance.ipv4 }}",
+          'port': "{{ molecule_yml.driver.port }}",
+          'connection': "{{ molecule_yml.driver.connection }}",
+          'user': "{{ molecule_yml.driver.vm_username }}",
+          'password': "{{ molecule_yml.driver.vm_password }}",
+          'winrm_transport': "{{ molecule_yml.driver.winrm_transport }}",
+          'winrm_server_cert_validation': "{{ molecule_yml.driver.winrm_server_cert_validation }}"
+        }
+      with_items: "{{ server.results }}"
+      register: instance_config_dict
+      when: server is changed
+
+    - name: Convert instance config dict to a list.
+      set_fact:
+        instance_conf: "{{ instance_config_dict.results | map(attribute='ansible_facts.instance_conf_dict') | list }}"
+      when: server is changed
+
+    - name: Dump instance config.
+      copy:
+        # NOTE(retr0h): Workaround for Ansible 2.2.
+        #               https://github.com/ansible/ansible/issues/20885
+        content: "{{ instance_conf | to_json | from_json | molecule_to_yaml | molecule_header }}"
+        dest: "{{ molecule_instance_config }}"
+      when: server is changed
+
+    - name: Wait for listening on 5986 port.
+      wait_for:
+        host: "{{ item.instance.ipv4 }}"
+        port: "{{ molecule_yml.driver.port }}"
+        delay: 5
+        timeout: 300
+      delegate_to: localhost
+      with_items: "{{ server.results }}"

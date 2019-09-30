@@ -1,0 +1,34 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: delegated
+  hostname: vCenter IP or hostname
+  username: administrator@vsphere.local
+  password: password
+  validate_certs: false
+  datacenter: datacenter name
+  esxi_hostname: esxi hostname
+  folder: folder path(ex: /vm)
+  vm_username: username for guest os
+  vm_password: password for guest os
+  options:
+    ansible_connection_options:
+      connection: ssh
+lint:
+  name: yamllint
+platforms:
+  - name: instance
+    template: template name
+    snapshot_src: snapshot for template
+    memory_mb: 2048
+    cpus: 2
+    network: VM Network
+    datastore: datastore name
+provisioner:
+  name: ansible
+  log: true
+verifier:
+  name: testinfra
+  lint:
+    name: flake8

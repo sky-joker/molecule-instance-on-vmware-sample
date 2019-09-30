@@ -1,0 +1,23 @@
+$certRootStore = "LocalMachine"
+$certStore = "My"
+$certPath = "{{ windows_save_path }}\{{ item.name }}.pfx"
+$CertificatePassword = "{{ molecule_yml.driver.vm_password }}"
+$pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+$pfx.Import($certPath,$CertificatePassword,"Exportable,MachineKeySet,PersistKeySet")
+$store = New-Object System.Security.Cryptography.X509Certificates.X509Store($certStore,$certRootStore)
+$store.Open("ReadWrite")
+$store.Add($pfx)
+$store.Close()
+
+
+$thumbprint = $pfx.Thumbprint
+$valueset = @{
+        Hostname = $ENV:COMPUTERNAME
+        CertificateThumbprint = $thumbprint
+    }
+$selectorset = @{
+    Transport = "HTTPS"
+    Address = "*"
+}
+
+New-WSManInstance -ResourceURI 'winrm/config/Listener' -SelectorSet $selectorset -ValueSet $valueset
