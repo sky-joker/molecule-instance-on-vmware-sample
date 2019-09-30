@@ -134,7 +134,7 @@ platforms:
 
 #### Demo
 
-The following is a demo when the sample is run.
+The following is demos when the sample is run.
 
 **Linux**
 
