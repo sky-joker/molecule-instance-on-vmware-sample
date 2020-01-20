@@ -26,6 +26,7 @@
         name: "{{ item.name }}"
         template: "{{ item.template }}"
         snapshot_src: "{{ item.snapshot_src }}"
+        linked_clone: yes
         hardware:
           memory_mb: "{{ item.memory_mb }}"
           num_cpus: "{{ item.cpus }}"
