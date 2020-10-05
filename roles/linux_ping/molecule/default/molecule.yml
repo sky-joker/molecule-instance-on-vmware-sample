@@ -13,7 +13,10 @@ driver:
   password: password
   validate_certs: false
   datacenter: datacenter name
+  # esxi_hostname and cluster are mutually exclusive!
   esxi_hostname: esxi hostname
+  # cluster: cluster name
+  resource_pool: molecule_instances
   folder: folder path(ex: /vm)
   vm_username: username for guest os
   vm_password: password for guest os
