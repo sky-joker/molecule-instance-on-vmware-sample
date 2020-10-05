@@ -40,8 +40,19 @@
         wait_for_ip_address: "yes"
         wait_for_customization: yes
         state: poweredon
-      register: server
-      with_items: "{{ molecule_yml.platforms }}"
+      register: create_servers
+      loop: "{{ molecule_yml.platforms }}"
+      async: 300
+      poll: 0
+    
+    - name: Check Server Creation
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ create_servers.results }}"
+      register: create_servers_async_poll_results
+      until: create_servers_async_poll_results.finished
+      retries: 60
+      delay: 5
 
     - name: Create ssh directory and public key in guest vm.
       vmware_vm_shell:
@@ -57,25 +68,37 @@
         vm_shell: /bin/bash
         vm_shell_args: "-c 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo {{ keypair_result.ssh_public_key }} > ~/.ssh/authorized_keys'"
         wait_for_process: true
-      with_items: "{{ molecule_yml.platforms }}"
+      register: create_ssh
+      loop: "{{ molecule_yml.platforms }}"
+      async: 300
+      poll: 0
+
+    - name: Check create ssh jobs
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ create_ssh.results }}"
+      register: create_ssh_async_poll_results
+      until: create_ssh_async_poll_results.finished
+      retries: 30
+      delay: 1
 
     - name: Populate instance config dict.
       set_fact:
         instance_conf_dict: {
-          'instance': "{{ item.item.name }}",
+          'instance': "{{ item.item.item.name }}",
           'address': "{{ item.instance.ipv4 }}",
           'user': "{{ molecule_yml.driver.vm_username }}",
           'port': 22,
           'identity_file': "{{ keypair_path }}"
         }
-      with_items: "{{ server.results }}"
+      with_items: "{{ create_servers_async_poll_results.results }}"
       register: instance_config_dict
-      when: server is changed
+      when: create_servers_async_poll_results is changed
 
     - name: Convert instance config dict to a list.
       set_fact:
         instance_conf: "{{ instance_config_dict.results | map(attribute='ansible_facts.instance_conf_dict') | list }}"
-      when: server is changed
+      when: create_servers_async_poll_results is changed
 
     - name: Dump instance config.
       copy:
@@ -83,4 +106,4 @@
         #               https://github.com/ansible/ansible/issues/20885
         content: "{{ instance_conf | to_json | from_json | molecule_to_yaml | molecule_header }}"
         dest: "{{ molecule_instance_config }}"
-      when: server is changed
+      when: create_servers_async_poll_results is changed
