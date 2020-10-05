@@ -1,6 +1,11 @@
 ---
 dependency:
   name: galaxy
+lint: |
+  set -e
+  yamllint .
+  ansible-lint
+  flake8
 driver:
   name: delegated
   hostname: vCenter IP or hostname
@@ -16,11 +21,9 @@ driver:
   port: 5986
   winrm_transport: ntlm
   winrm_server_cert_validation: ignore
-lint:
-  name: yamllint
 platforms:
   - name: instance
-    template: template name
+    template: vm or template name
     snapshot_src: snapshot for template
     memory_mb: 4096
     cpus: 2
@@ -33,5 +36,3 @@ provisioner:
   log: true
 verifier:
   name: testinfra
-  lint:
-    name: flake8

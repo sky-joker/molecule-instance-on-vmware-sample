@@ -1,6 +1,11 @@
 ---
 dependency:
   name: galaxy
+lint: |
+  set -e
+  yamllint .
+  ansible-lint
+  flake8
 driver:
   name: delegated
   hostname: vCenter IP or hostname
@@ -15,8 +20,6 @@ driver:
   options:
     ansible_connection_options:
       connection: ssh
-lint:
-  name: yamllint
 platforms:
   - name: instance
     template: template name
@@ -30,5 +33,3 @@ provisioner:
   log: true
 verifier:
   name: testinfra
-  lint:
-    name: flake8
