@@ -1,6 +1,11 @@
 ---
 dependency:
   name: galaxy
+lint: |
+  set -e
+  yamllint .
+  ansible-lint
+  flake8
 driver:
   name: delegated
   hostname: vCenter IP or hostname
@@ -8,15 +13,16 @@ driver:
   password: password
   validate_certs: false
   datacenter: datacenter name
+  # esxi_hostname and cluster are mutually exclusive!
   esxi_hostname: esxi hostname
+  # cluster: cluster name
+  resource_pool: molecule_instances
   folder: folder path(ex: /vm)
   vm_username: username for guest os
   vm_password: password for guest os
   options:
     ansible_connection_options:
       connection: ssh
-lint:
-  name: yamllint
 platforms:
   - name: instance
     template: template name
@@ -30,5 +36,3 @@ provisioner:
   log: true
 verifier:
   name: testinfra
-  lint:
-    name: flake8

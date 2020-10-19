@@ -6,7 +6,7 @@
   no_log: "{{ not (lookup('env', 'MOLECULE_DEBUG') | bool or molecule_yml.provisioner.log | default(false) | bool) }}"
   tasks:
     - name: Gather fact from molecule instance(s).
-      vmware_guest_facts:
+      vmware_guest_info:
         hostname: "{{ molecule_yml.driver.hostname }}"
         username: "{{ molecule_yml.driver.username }}"
         password: "{{ molecule_yml.driver.password }}"
@@ -20,23 +20,39 @@
         label: "{{ item.name }}"
       ignore_errors: true
 
-    - name: Poweredoff molecule instance(s).
+    - name: Power off molecule instance(s).
       vmware_guest:
         hostname: "{{ molecule_yml.driver.hostname }}"
         username: "{{ molecule_yml.driver.username }}"
         password: "{{ molecule_yml.driver.password }}"
         validate_certs: "{{ molecule_yml.driver.validate_certs }}"
         datacenter: "{{ molecule_yml.driver.datacenter }}"
-        esxi_hostname: "{{ molecule_yml.driver.esxi_hostname }}"
+        esxi_hostname: "{{ molecule_yml.driver.esxi_hostname | default(omit) }}"
+        cluster: "{{ molecule_yml.driver.cluster | default(omit) }}"
         folder: "{{ molecule_yml.driver.folder }}"
         name: "{{ item.instance.hw_name }}"
         state: poweredoff
       loop: "{{ server_fact_result.results }}"
       loop_control:
-        label: "{{ item.instance.hw_name | default('not find vm') }}"
+        label: "{{ item.instance.hw_name | default('vm not found') }}"
       when:
         - "'instance' in item"
         - item.instance.hw_power_status != "poweredOff"
+      register: powered_off
+      async: 300
+      poll: 0
+
+    - name: Check powered off instance(s)
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ powered_off.results }}"
+      loop_control:
+        label: "{{ item.item.instance.hw_name | default('vm not found') }}"
+      register: powered_off_async
+      until: powered_off_async.finished
+      retries: 30
+      delay: 1
+      when: item is not skipped
 
     - name: Destroy molecule instance(s).
       vmware_guest:
@@ -45,12 +61,28 @@
         password: "{{ molecule_yml.driver.password }}"
         validate_certs: "{{ molecule_yml.driver.validate_certs }}"
         datacenter: "{{ molecule_yml.driver.datacenter }}"
-        esxi_hostname: "{{ molecule_yml.driver.esxi_hostname }}"
+        esxi_hostname: "{{ molecule_yml.driver.esxi_hostname | default(omit) }}"
+        cluster: "{{ molecule_yml.driver.cluster | default(omit) }}"
         folder: "{{ molecule_yml.driver.folder }}"
         name: "{{ item.instance.hw_name }}"
         state: absent
       loop: "{{ server_fact_result.results }}"
       loop_control:
-        label: "{{ item.instance.hw_name | default('not find vm') }}"
+        label: "{{ item.instance.hw_name | default('vm not found') }}"
       when:
         - "'instance' in item"
+      register: destroy
+      async: 300
+      poll: 0
+
+    - name: Check destroyed instance(s)
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ destroy.results }}"
+      loop_control:
+        label: "{{ item.item.instance.hw_name | default('vm not found') }}"
+      register: destroy_async
+      until: destroy_async.finished
+      retries: 30
+      delay: 1
+      when: item is not skipped
